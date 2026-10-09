@@ -30,6 +30,11 @@ db = client[os.environ['DB_NAME']]
 # Create the main app without a prefix
 app = FastAPI()
 
+@app.get("/")
+@app.head("/")
+async def root():
+    return {"status": "ok", "service": "Srikanteshwara School Backend"}
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
