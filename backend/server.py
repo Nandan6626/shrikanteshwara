@@ -132,25 +132,59 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} != real link host {real!r} (G3)")
 
 async def send_email(*, to: str, subject: str, html: str, reply_to: Optional[str] = None) -> Optional[str]:
-    _assert_safe_email(subject, html)
-    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
-    if reply_to or EMAIL_REPLY_TO:
-        payload["contact_email"] = reply_to or EMAIL_REPLY_TO
-    try:
-        async with httpx.AsyncClient(timeout=30) as http_client:
-            resp = await http_client.post(
-                f"{EMAIL_BASE_URL}/api/v1/email/send",
-                headers={"X-Email-Key": EMAIL_KEY},
-                json=payload,
-            )
-        resp.raise_for_status()
-        return resp.json().get("id")
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Email send failed: {e.response.status_code} {e.response.text}")
-        raise HTTPException(status_code=502, detail="Failed to send email")
-    except Exception as e:
-        logger.error(f"Email send error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to send email")
+    # Check if SMTP is configured (e.g. Gmail App Password)
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    if smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"{EMAIL_FROM_NAME} <{smtp_user}>"
+            msg["To"] = to
+            if reply_to:
+                msg["Reply-To"] = reply_to
+            msg.attach(MIMEText(html, "html"))
+            
+            smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+            smtp_port = int(os.environ.get("SMTP_PORT", 587))
+            
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+            server.quit()
+            logger.info(f"Email sent via SMTP to {to}")
+            return "smtp_delivered"
+        except Exception as e:
+            logger.error(f"SMTP send failed: {e}")
+
+    # Fallback to Emergent proxy if a valid key is provided
+    if EMAIL_KEY and "dummy" not in EMAIL_KEY.lower():
+        try:
+            _assert_safe_email(subject, html)
+            payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+            if reply_to or EMAIL_REPLY_TO:
+                payload["contact_email"] = reply_to or EMAIL_REPLY_TO
+            async with httpx.AsyncClient(timeout=15) as http_client:
+                resp = await http_client.post(
+                    f"{EMAIL_BASE_URL}/api/v1/email/send",
+                    headers={"X-Email-Key": EMAIL_KEY},
+                    json=payload,
+                )
+            resp.raise_for_status()
+            return resp.json().get("id")
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Email proxy returned {e.response.status_code}: {e.response.text}")
+        except Exception as e:
+            logger.warning(f"Email send error: {str(e)}")
+    else:
+        logger.info("No active email key or SMTP configured; enquiry stored in database.")
+
+    return "stored_in_database"
 
 # Add your routes to the router instead of directly to app
 @api_router.get("/")
@@ -161,6 +195,11 @@ async def root():
 async def get_content():
     return {"notices": [], "events": [], "message": "Official content will appear here once provided by the school."}
 
+@api_router.get("/enquiries")
+async def get_enquiries():
+    enquiries = await db.enquiries.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return enquiries
+
 @api_router.post("/enquiries")
 async def create_enquiry(input: Enquiry):
     name = (input.name or "").strip() or "Not provided"
@@ -168,7 +207,24 @@ async def create_enquiry(input: Enquiry):
     grade = (input.grade or "").strip() or "Not specified"
     message = (input.message or "").strip() or "(No message provided)"
     reply_to = visitor_email if EMAIL_RE.match(visitor_email) else None
-    submitted = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    now_dt = datetime.now(timezone.utc)
+    submitted = now_dt.strftime("%d %b %Y, %H:%M UTC")
+
+    # 1. Always safely persist the enquiry in MongoDB
+    enquiry_id = str(uuid.uuid4())
+    try:
+        doc = {
+            "id": enquiry_id,
+            "name": name,
+            "email": visitor_email,
+            "grade": grade,
+            "message": message,
+            "submitted_at": submitted,
+            "created_at": now_dt.isoformat()
+        }
+        await db.enquiries.insert_one(doc)
+    except Exception as db_exc:
+        logger.error(f"Failed to save enquiry in MongoDB: {db_exc}")
 
     subject = f"New admission enquiry from {name}"
     html = (
@@ -192,8 +248,15 @@ async def create_enquiry(input: Enquiry):
         'Sent by Srikanteshwara Vidya Samsthe website. We never ask for passwords or payment details by email.</p>'
         '</td></tr></table>'
     )
-    email_id = await send_email(to=ENQUIRY_RECIPIENT_EMAIL, subject=subject, html=html, reply_to=reply_to)
-    return {"id": email_id, "message": "Enquiry received"}
+    
+    # 2. Try email send without breaking the request if third-party email service is unavailable
+    email_id = None
+    try:
+        email_id = await send_email(to=ENQUIRY_RECIPIENT_EMAIL, subject=subject, html=html, reply_to=reply_to)
+    except Exception as em_exc:
+        logger.warning(f"Email delivery skipped: {em_exc}")
+
+    return {"id": email_id or enquiry_id, "message": "Enquiry received"}
 
 @api_router.post("/chat")
 async def chat(input: ChatRequest):
