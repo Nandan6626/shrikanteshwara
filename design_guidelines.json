@@ -1,0 +1,61 @@
+{
+  "project": "Srikanteshwara School Official Website",
+  "version": "1.0.0",
+  "archetype": "ORGANIC & EARTHY / ELITE ACADEMIC",
+  "typography": {
+    "heading_font": "Plus Jakarta Sans, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "mono_font": "JetBrains Mono, monospace"
+  },
+  "colors": {
+    "primary": "#1E3A8A",
+    "secondary": "#B45309",
+    "accent": "#047857",
+    "background_light": "#F8FAFC",
+    "background_dark": "#0F172A",
+    "surface": "#FFFFFF",
+    "border": "#E2E8F0"
+  },
+  "image_urls": [
+    {
+      "category": "campus_hero",
+      "url": "https://images.unsplash.com/photo-1769430886896-dc30842be5a3?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Modern campus building architecture"
+    },
+    {
+      "category": "campus_lake",
+      "url": "https://images.unsplash.com/photo-1784001727397-1038beb23bca?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Green campus with pond and buildings"
+    },
+    {
+      "category": "student_library",
+      "url": "https://images.unsplash.com/photo-1770235621081-030607a06cee?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Student in modern library learning"
+    },
+    {
+      "category": "science_lab",
+      "url": "https://images.unsplash.com/photo-1758685734030-a31d96462eec?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Teacher and student conducting science experiment"
+    }
+  ],
+  "navigation": [
+    "Home",
+    "About School",
+    "Leadership & Principal",
+    "Academics (LKG - Grade 10)",
+    "Admissions",
+    "Facilities",
+    "Student Activities",
+    "Events & Gallery",
+    "Notices & Downloads",
+    "Careers",
+    "Contact",
+    "Gemini AI Assistant"
+  ],
+  "features": {
+    "chatbot": "Secure Gemini-powered floating assistant with streaming response and error handling",
+    "admissions": "Interactive inquiry and application form with validation",
+    "notices": "Live announcement ticker and filterable circulars repository",
+    "documents": "Downloadable PDF syllabi, fee structure, and academic calendar"
+  }
+}
